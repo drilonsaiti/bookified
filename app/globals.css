@@ -169,6 +169,9 @@
   body {
     @apply bg-background text-foreground;
   }
+  /*header {
+    @apply bg-background shadow-md  transition duration-300
+  }*/
 }
 
 @layer utilities {
