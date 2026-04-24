@@ -1,20 +1,12 @@
 import {NextResponse} from "next/server";
 import {handleUpload, HandleUploadBody} from "@vercel/blob/client";
-import {auth,verifyToken} from "@clerk/nextjs/server";
+import {auth} from "@clerk/nextjs/server";
 import {MAX_FILE_SIZE} from "@/lib/constants";
 
 export async function POST(request: Request): Promise<NextResponse | undefined> {
     const body = (await request.json()) as HandleUploadBody;
-    let userId: string | undefined;
 
-    const { searchParams } = new URL(request.url);
-    const token = searchParams.get('token') as string;
-
-    const verified = await verifyToken(token, {
-        jwtKey: process.env.CLERK_JWT_KEY!,
-        clockSkewInMs: 60000,
-    });
-    userId = verified.sub;
+    const { userId } = await auth();
 
     if (!userId) {
         return NextResponse.json({ error: 'Unauthorized' }, { status: 401 });
@@ -39,8 +31,9 @@ export async function POST(request: Request): Promise<NextResponse | undefined> 
                 };
             },
             onUploadCompleted: async ({ blob, tokenPayload }) => {
+                console.log('File uploaded successfully:', blob.url);
                 const payload = tokenPayload ? JSON.parse(tokenPayload) : null;
-                const userId = payload?.userId;
+                console.log('User ID from payload:', payload?.userId);
             }
         });
 
