@@ -21,14 +21,12 @@ import {useRouter} from "next/navigation";
 import {upload} from "@vercel/blob/client";
 
 const UploadForm = () => {
-    const { userId,getToken } = useAuth();
+    const { userId } = useAuth();
     const router = useRouter();
 
     const [isSubmitting, setIsSubmitting] = useState(false);
     const [isMounted, setIsMounted] = useState(false);
 
-    const [pdfName, setPdfName] = useState<string | null>(null);
-    const [coverName, setCoverName] = useState<string | null>(null);
 
     useEffect(() => {
         setIsMounted(true);
@@ -53,7 +51,7 @@ const UploadForm = () => {
         setIsSubmitting(true);
 
         try {
-            const token = await getToken();
+
             const existsCheck = await checkBookExists(data.title);
 
             if (existsCheck.exists && existsCheck.book) {
@@ -63,8 +61,6 @@ const UploadForm = () => {
 
                 return;
             }
-
-            console.log()
 
             const fileTitle = data.title.replace(/[^a-zA-Z0-9\s]/g, '').replace(/\s+/g, '-').toLowerCase();
             const pdfFile = data.pdfFile as File;
@@ -78,40 +74,43 @@ const UploadForm = () => {
 
             const uploadedPdfBlob = await upload(fileTitle,pdfFile,{
                 access: 'public',
-                handleUploadUrl: `/api/upload?token=${token}`,
+                handleUploadUrl: `/api/upload?userId=${userId}`,
                 contentType: 'application/pdf',
             });
 
             let coverURL: string;
+            let coverBlobKey: string | undefined;
 
             if (data.coverImage && data.coverImage.length > 0) {
                 const coverFile = data.coverImage[0] as File;
                 const coverBlob = await upload(`${fileTitle}_cover.png`,coverFile,{
                     access: 'public',
-                    handleUploadUrl: `/api/upload?token=${token}`,
+                    handleUploadUrl: `/api/upload?userId=${userId}`,
                     contentType: coverFile.type,
                 });
                 coverURL = coverBlob.url;
+                coverBlobKey = coverBlob.pathname;
             }else {
                 const response = await fetch(parsedPDF.cover);
                 const blob = await response.blob();
 
                 const uploadedCoverBlob = await upload(`${fileTitle}_cover.png`,blob,{
                     access: 'public',
-                    handleUploadUrl: `/api/upload?token=${token}`,
+                    handleUploadUrl: `/api/upload?userId=${userId}`,
                     contentType: 'image/png',
                 })
                 coverURL = uploadedCoverBlob.url;
+                coverBlobKey = uploadedCoverBlob.pathname;
             }
 
             const book = await createBook({
-                clerkId: userId,
                 title: data.title,
                 author: data.author,
                 persona: data.persona,
                 fileURL: uploadedPdfBlob.url,
                 fileBlobKey: uploadedPdfBlob.pathname,
                 coverURL,
+                coverBlobKey,
                 fileSize: pdfFile.size
             })
 
@@ -124,12 +123,11 @@ const UploadForm = () => {
                 toast.info('Book already exists. Please choose a different title.');
                 form.reset();
                 router.push(`/books/${book.data.slug}`);
-            }
 
                 return;
             }
 
-            const segments = await saveBookSegments(book.data._id,userId,parsedPDF.content);
+            const segments = await saveBookSegments(book.data._id,parsedPDF.content);
 
             if (!segments.success) {
                 toast.error('Failed to save book segments. Please try again.');

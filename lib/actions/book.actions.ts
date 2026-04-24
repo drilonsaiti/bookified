@@ -5,6 +5,7 @@ import {connectToDatabase} from "@/database/mongoose";
 import {generateSlug, serializeData} from "@/lib/utils";
 import Book from "@/database/models/book.model";
 import BookSegment from "@/database/models/book-segment.model";
+import {auth} from "@clerk/nextjs/server";
 
 export const getAllBooks = async () => {
     try {
@@ -17,11 +18,11 @@ export const getAllBooks = async () => {
             books: serializeData(books)
         }
 
-    } catch (error) {
+    } catch (error: any) {
         console.error('Error connecting to database:', error);
         return {
             success: false,
-            error
+            error: error?.message || String(error)
         }
     }
 }
@@ -36,11 +37,11 @@ export const getBookById = async (id: string) => {
             success:true,
             book: serializeData(book)
         }
-    }catch (error) {
+    }catch (error: any) {
         console.error('Error connecting to database:', error);
         return {
             success: false,
-            error
+            error: error?.message || String(error)
         }
     }
 }
@@ -54,11 +55,11 @@ export const getBookBySlug = async (slug: string) => {
             success:true,
             book: serializeData(book)
         }
-    } catch (e) {
+    } catch (e: any) {
         console.error('Error connecting to database:', e);
         return {
             success: false,
-            error: e
+            error: e?.message || String(e)
         }
     }
 }
@@ -82,17 +83,26 @@ export const checkBookExists = async (title: string) => {
         return {
             exists: false,
         }
-    } catch (error) {
+    } catch (error: any) {
         console.error('Error connecting to database:', error);
         return {
             exists: false,
-            error
+            error: error?.message || String(error)
         }
     }
 }
 
-export const createBook = async (data: CreateBook) => {
+export const createBook = async (data: Omit<CreateBook, 'clerkId'>) => {
     try {
+        const {userId} = await auth();
+
+        if (!userId) {
+            return {
+                success: false,
+                error: "Unauthorized"
+            }
+        }
+
         await connectToDatabase();
 
         const slug = generateSlug(data.title);
@@ -106,32 +116,57 @@ export const createBook = async (data: CreateBook) => {
                 alreadyExists: true
             }
 
-        const book = await Book.create({...data, slug, totalSegments: 0});
+        const book = await Book.create({...data, clerkId: userId, slug, totalSegments: 0});
 
         return {
             success: true,
             data: serializeData(book)
         }
 
-    } catch (error) {
+    } catch (error: any) {
         console.error('Error creating book:', error);
         return {
             success: false,
-            error
+            error: error?.message || String(error)
         }
     }
 }
 
 
-export const saveBookSegments = async (bookId: string,clerkId: string, segments: TextSegment[]) => {
+export const saveBookSegments = async (bookId: string, segments: TextSegment[]) => {
 
     try {
+        const {userId} = await auth();
+
+        if (!userId) {
+            return {
+                success: false,
+                error: "Unauthorized"
+            }
+        }
+
         await connectToDatabase();
+
+        const book = await Book.findById(bookId);
+
+        if (!book) {
+            return {
+                success: false,
+                error: "Book not found"
+            }
+        }
+
+        if (book.clerkId !== userId) {
+            return {
+                success: false,
+                error: "Unauthorized: You do not own this book"
+            }
+        }
 
         console.log('Saving book segments ...');
 
         const segmentToInsert = segments.map(segment => ({
-            clerkId,
+            clerkId: userId,
             bookId,
             content: segment.text,
             segmentIndex: segment.segmentIndex,
@@ -152,14 +187,14 @@ export const saveBookSegments = async (bookId: string,clerkId: string, segments:
             }
         }
 
-    } catch (error) {
+    } catch (error: any) {
         console.error('Error saving book segments:', error);
         await BookSegment.deleteMany({book: bookId});
         await Book.findByIdAndDelete(bookId);
         console.log('Deleted book segments and book due to failure to save segments.')
         return {
             success: false,
-            error
+            error: error?.message || String(error)
         }
     }
 }
