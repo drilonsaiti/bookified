@@ -4,6 +4,7 @@ import {IBM_Plex_Serif, Mona_Sans} from "next/font/google";
 
 import Navbar from "@/components/Navbar";
 import "./globals.css";
+import {Toaster} from "sonner";
 
 
 const ibmPlexSerif = IBM_Plex_Serif({
@@ -39,6 +40,7 @@ export default function RootLayout({
           <Navbar />
 
           {children}
+          <Toaster />
         </ClerkProvider>
       </body>
     </html>

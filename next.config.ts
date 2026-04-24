@@ -8,6 +8,10 @@ const nextConfig: NextConfig = {
             {
                 protocol: 'https',
                 hostname: 'covers.openlibrary.org',
+            },
+            {
+                protocol: 'https',
+                hostname: process.env.NEXT_PUBLIC_BLOB_BASE_URL || ''
             }
         ]
     }
