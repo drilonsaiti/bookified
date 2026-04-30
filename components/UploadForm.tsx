@@ -16,7 +16,13 @@ import VoiceSelector from "@/components/VoiceSelector";
 import FileUploader from "@/components/FileUploader";
 import {useAuth} from "@clerk/react";
 import {toast} from "sonner";
-import {checkBookExists, createBook, saveBookSegments} from "@/lib/actions/book.actions";
+import {
+    checkBookExists,
+    checkUserQuota,
+    createBook,
+    deleteBlobs,
+    saveBookSegments
+} from "@/lib/actions/book.actions";
 import {useRouter} from "next/navigation";
 import {upload} from "@vercel/blob/client";
 
@@ -50,7 +56,28 @@ const UploadForm = () => {
 
         setIsSubmitting(true);
 
+        const uploadedBlobUrls: string[] = [];
+
+        const cleanupBlobs = async () => {
+            if (uploadedBlobUrls.length > 0) {
+                await deleteBlobs(uploadedBlobUrls);
+            }
+        };
+
         try {
+            const quotaCheck = await checkUserQuota();
+
+            if (!quotaCheck.success) {
+                if (quotaCheck.isBillingError) {
+                    toast.info(quotaCheck.error, {
+                        description: 'Redirecting to subscriptions...',
+                    });
+                    router.push('/subscriptions');
+                } else {
+                    toast.error(quotaCheck.error || 'Failed to check quota');
+                }
+                return;
+            }
 
             const existsCheck = await checkBookExists(data.title);
 
@@ -77,6 +104,7 @@ const UploadForm = () => {
                 handleUploadUrl: `/api/upload?userId=${userId}`,
                 contentType: 'application/pdf',
             });
+            uploadedBlobUrls.push(uploadedPdfBlob.url);
 
             let coverURL: string;
             let coverBlobKey: string | undefined;
@@ -88,6 +116,7 @@ const UploadForm = () => {
                     handleUploadUrl: `/api/upload?userId=${userId}`,
                     contentType: coverFile.type,
                 });
+                uploadedBlobUrls.push(coverBlob.url);
                 coverURL = coverBlob.url;
                 coverBlobKey = coverBlob.pathname;
             }else {
@@ -99,6 +128,7 @@ const UploadForm = () => {
                     handleUploadUrl: `/api/upload?userId=${userId}`,
                     contentType: 'image/png',
                 })
+                uploadedBlobUrls.push(uploadedCoverBlob.url);
                 coverURL = uploadedCoverBlob.url;
                 coverBlobKey = uploadedCoverBlob.pathname;
             }
@@ -115,8 +145,17 @@ const UploadForm = () => {
             })
 
             if (!book.success) {
-                toast.error('Failed to upload book. Please try again.');
-                throw new Error('Failed to create book');
+                await cleanupBlobs();
+                if (book.isBillingError) {
+                    toast.info(book.error || 'Book limit reached for your current plan.', {
+                        description: 'Redirecting to subscriptions...',
+                    });
+                    router.push('/subscriptions');
+                    return;
+                }
+
+                toast.error(book.error || 'Failed to create book');
+                return;
             }
 
             if (book.alreadyExists) {
@@ -130,8 +169,9 @@ const UploadForm = () => {
             const segments = await saveBookSegments(book.data._id,parsedPDF.content);
 
             if (!segments.success) {
-                toast.error('Failed to save book segments. Please try again.');
-                throw new Error('Failed to save book segments');
+                await cleanupBlobs();
+                toast.error(segments.error || 'Failed to save book segments');
+                return;
             }
 
             form.reset();
@@ -139,8 +179,8 @@ const UploadForm = () => {
 
         } catch (error) {
             console.error(error);
-
-            toast.error('Failed to upload book. Please try again.');
+            await cleanupBlobs();
+            toast.error('An unexpected error occurred. Please try again.');
         } finally {
             setIsSubmitting(false);
         }

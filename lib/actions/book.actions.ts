@@ -1,6 +1,6 @@
 'use server'
 
-import {CreateBook, TextSegment} from "@/types";
+import {CreateBook, CreateBookResult, TextSegment} from "@/types";
 import {connectToDatabase} from "@/database/mongoose";
 import {escapeRegex, generateSlug, serializeData} from "@/lib/utils";
 import Book from "@/database/models/book.model";
@@ -8,14 +8,88 @@ import BookSegment from "@/database/models/book-segment.model";
 import {auth} from "@clerk/nextjs/server";
 import mongoose from "mongoose";
 import {revalidatePath} from "next/cache";
+import {getSubscription} from "@/lib/subscription";
+import {del} from "@vercel/blob";
+
+export const deleteBlobs = async (urls: string[]) => {
+    try {
+        const {userId} = await auth();
+
+        if (!userId) {
+            return {
+                success: false,
+                error: "Unauthorized"
+            }
+        }
+
+        await del(urls);
+
+        return {
+            success: true
+        }
+    } catch (error: any) {
+        console.error('Error deleting blobs:', error);
+        return {
+            success: false,
+            error: error?.message || String(error)
+        }
+    }
+}
 
 
 
-export const getAllBooks = async () => {
+export const checkUserQuota = async () => {
+    try {
+        const {userId} = await auth();
+
+        if (!userId) {
+            return {
+                success: false,
+                error: "Unauthorized"
+            }
+        }
+
+        await connectToDatabase();
+
+        const { plan, limits } = await getSubscription();
+        const bookCount = await Book.countDocuments({ clerkId: userId });
+
+        if (bookCount >= limits.maxBooks) {
+            return {
+                success: false,
+                isBillingError: true,
+                error: `Plan limit reached: Your current ${plan} plan allows up to ${limits.maxBooks} books. Please upgrade to add more.`
+            }
+        }
+
+        return {
+            success: true
+        }
+    } catch (error: any) {
+        console.error('Error checking user quota:', error);
+        return {
+            success: false,
+            error: error?.message || String(error)
+        }
+    }
+}
+
+export const getAllBooks = async (query?: string) => {
     try {
         await connectToDatabase();
 
-        const books = await Book.find().sort({createdAt: -1}).lean();
+        let filter = {};
+        if (query) {
+            const regex = new RegExp(query, 'i');
+            filter = {
+                $or: [
+                    { title: { $regex: regex } },
+                    { author: { $regex: regex } }
+                ]
+            };
+        }
+
+        const books = await Book.find(filter).sort({createdAt: -1}).lean();
 
         return {
             success:true,
@@ -96,7 +170,7 @@ export const checkBookExists = async (title: string) => {
     }
 }
 
-export const createBook = async (data: Omit<CreateBook, 'clerkId'>) => {
+export const createBook = async (data: Omit<CreateBook, 'clerkId'>): Promise<CreateBookResult> => {
     try {
         const {userId} = await auth();
 
@@ -108,6 +182,18 @@ export const createBook = async (data: Omit<CreateBook, 'clerkId'>) => {
         }
 
         await connectToDatabase();
+
+        const { plan, limits } = await getSubscription();
+
+        const bookCount = await Book.countDocuments({ clerkId: userId });
+
+        if (bookCount >= limits.maxBooks) {
+            return {
+                success: false,
+                isBillingError: true,
+                error: `Plan limit reached: Your current ${plan} plan allows up to ${limits.maxBooks} books. Please upgrade to add more.`
+            }
+        }
 
         const slug = generateSlug(data.title);
 

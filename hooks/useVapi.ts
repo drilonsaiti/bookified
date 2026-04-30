@@ -1,10 +1,10 @@
 'use client';
 
-// Create hooks/useVapi.ts: the core hook. Initializes Vapi SDK, manages call lifecycle (idle, connecting, starting, listening, thinking, speaking), tracks messages array + currentMessage streaming, handles duration timer with maxDuration enforcement, session tracking via server actions
 
 import { useState, useEffect, useRef, useCallback } from 'react';
 import Vapi from '@vapi-ai/web';
 import { useAuth } from '@clerk/nextjs';
+import { useSubscription } from "@/hooks/useSubscription";
 
 import { ASSISTANT_ID, DEFAULT_VOICE, VOICE_SETTINGS } from '@/lib/constants';
 import { getVoice } from '@/lib/utils';
@@ -41,14 +41,16 @@ export type CallStatus = 'idle' | 'connecting' | 'starting' | 'listening' | 'thi
 
 export function useVapi(book: IBook) {
     const { userId } = useAuth();
-    // const { limits } = useSubscription();
+    const { limits } = useSubscription();
 
     const [status, setStatus] = useState<CallStatus>('idle');
     const [messages, setMessages] = useState<Messages[]>([]);
     const [currentMessage, setCurrentMessage] = useState('');
     const [currentUserMessage, setCurrentUserMessage] = useState('');
     const [duration, setDuration] = useState(0);
-    const [limitError, setLimitError] = useState<string | null>(null);
+    const [limitError, setLimitError] = useState<{message: string, isBillingError?: boolean} | null>(null);
+    const [maxDurationSeconds, setMaxDurationSeconds] = useState(limits.maxDurationMinutes * SECONDS_PER_MINUTE);
+
 
     const timerRef = useRef<NodeJS.Timeout | null>(null);
     const startTimeRef = useRef<number | null>(null);
@@ -56,7 +58,7 @@ export function useVapi(book: IBook) {
     const isStoppingRef = useRef(false);
 
     // Keep refs in sync with latest values for use in callbacks
-    // const maxDurationRef = useLatestRef(limits.maxSessionMinutes * 60);
+     const maxDurationRef = useLatestRef(maxDurationSeconds);
     const durationRef = useLatestRef(duration);
     const voice = book.persona || DEFAULT_VOICE;
 
@@ -78,14 +80,15 @@ export function useVapi(book: IBook) {
                         setDuration(newDuration);
 
                         // Check duration limit
-                        // if (newDuration >= maxDurationRef.current) {
-                        //     getVapi().stop();
-                        //     setLimitError(
-                        //         `Session time limit (${Math.floor(
-                        //             maxDurationRef.current / SECONDS_PER_MINUTE,
-                        //         )} minutes) reached. Upgrade your plan for longer sessions.`,
-                        //     );
-                        // }
+                        if (newDuration >= maxDurationRef.current) {
+                            getVapi().stop();
+                            setLimitError({
+                                message: `Session time limit (${Math.floor(
+                                    maxDurationRef.current / SECONDS_PER_MINUTE,
+                                )} minutes) reached. Upgrade your plan for longer sessions.`,
+                                isBillingError: true
+                            });
+                        }
                     }
                 }, TIMER_INTERVAL_MS);
             },
@@ -192,11 +195,11 @@ export function useVapi(book: IBook) {
                 // Show user-friendly error message
                 const errorMessage = error.message?.toLowerCase() || '';
                 if (errorMessage.includes('timeout') || errorMessage.includes('silence')) {
-                    setLimitError('Session ended due to inactivity. Click the mic to start again.');
+                    setLimitError({ message: 'Session ended due to inactivity. Click the mic to start again.' });
                 } else if (errorMessage.includes('network') || errorMessage.includes('connection')) {
-                    setLimitError('Connection lost. Please check your internet and try again.');
+                    setLimitError({ message: 'Connection lost. Please check your internet and try again.' });
                 } else {
-                    setLimitError('Session ended unexpectedly. Click the mic to start again.');
+                    setLimitError({ message: 'Session ended unexpectedly. Click the mic to start again.' });
                 }
 
                 startTimeRef.current = null;
@@ -227,7 +230,7 @@ export function useVapi(book: IBook) {
 
     const start = useCallback(async () => {
         if (!userId) {
-            setLimitError('Please sign in to start a voice session.');
+            setLimitError({ message: 'Please sign in to start a voice session.' });
             return;
         }
 
@@ -239,14 +242,22 @@ export function useVapi(book: IBook) {
             const result = await startVoiceSession(userId, book._id);
 
             if (!result.success) {
-                setLimitError(result.error || 'Session limit reached. Please upgrade your plan.');
+                setLimitError({
+                    message: result.error || 'Session limit reached. Please upgrade your plan.',
+                    isBillingError: !!result.isBillingError
+                });
                 setStatus('idle');
+
                 return;
+            }
+
+            if (result.maxDurationMinutes) {
+                setMaxDurationSeconds(result.maxDurationMinutes * SECONDS_PER_MINUTE);
             }
 
             sessionIdRef.current = result.sessionId || null;
             // Note: Server-returned maxDurationMinutes is informational only
-            // The actual limit is enforced by useLatestRef(limits.maxSessionMinutes * 60)
+            // The actual limit is enforced by useLatestRef(limits.maxDurationMinutes * 60)
 
             const firstMessage = `Hey, good to meet you. Quick question before we dive in - have you actually read ${book.title} yet, or are we starting fresh?`;
 
@@ -275,7 +286,7 @@ export function useVapi(book: IBook) {
                  sessionIdRef.current = null;
             }
             setStatus('idle');
-            setLimitError('Failed to start voice session. Please try again.');
+            setLimitError({ message: 'Failed to start voice session. Please try again.' });
         }
     }, [book._id, book.title, book.author, voice, userId]);
 
@@ -289,16 +300,16 @@ export function useVapi(book: IBook) {
     }, []);
 
     const isActive =
+        status === 'connecting' ||
         status === 'starting' ||
         status === 'listening' ||
         status === 'thinking' ||
         status === 'speaking';
 
     // Calculate remaining time
-    // const maxDurationSeconds = limits.maxSessionMinutes * SECONDS_PER_MINUTE;
-    // const remainingSeconds = Math.max(0, maxDurationSeconds - duration);
-    // const showTimeWarning =
-    //     isActive && remainingSeconds <= TIME_WARNING_THRESHOLD && remainingSeconds > 0;
+    const remainingSeconds = Math.max(0, maxDurationSeconds - duration);
+    const showTimeWarning =
+        isActive && remainingSeconds <= TIME_WARNING_THRESHOLD && remainingSeconds > 0;
 
     return {
         status,
@@ -311,9 +322,9 @@ export function useVapi(book: IBook) {
         stop,
         limitError,
         clearError,
-        // maxDurationSeconds,
-        // remainingSeconds,
-        // showTimeWarning,
+        maxDurationSeconds,
+        remainingSeconds,
+        showTimeWarning,
     };
 }
 

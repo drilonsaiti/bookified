@@ -428,7 +428,7 @@
     }
   }
   .vapi-mic-btn-active {
-    @apply bg-white;
+    @apply bg-[#212a3b];
   }
   .vapi-mic-btn-inactive {
     @apply bg-white;
@@ -450,6 +450,9 @@
     @apply bg-gray-400;
   }
   .vapi-status-dot-connecting {
+    @apply bg-yellow-500 animate-pulse;
+  }
+  .vapi-status-dot-starting {
     @apply bg-yellow-500 animate-pulse;
   }
   .vapi-status-dot-listening {
