@@ -7,6 +7,9 @@ import Book from "@/database/models/book.model";
 import BookSegment from "@/database/models/book-segment.model";
 import {auth} from "@clerk/nextjs/server";
 import mongoose from "mongoose";
+import {revalidatePath} from "next/cache";
+
+
 
 export const getAllBooks = async () => {
     try {
@@ -118,6 +121,8 @@ export const createBook = async (data: Omit<CreateBook, 'clerkId'>) => {
             }
 
         const book = await Book.create({...data, clerkId: userId, slug, totalSegments: 0});
+
+        revalidatePath('/')
 
         return {
             success: true,
