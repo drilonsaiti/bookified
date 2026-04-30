@@ -1,4 +1,5 @@
 import { NextResponse } from 'next/server';
+import crypto from 'crypto';
 
 import { searchBookSegments } from '@/lib/actions/book.actions';
 
@@ -48,9 +49,26 @@ function parseArgs(args: unknown): Record<string, unknown> {
 
 export async function POST(request: Request) {
     try {
-        const body = await request.json();
+        const rawBody = await request.text();
+        const signature = request.headers.get('x-vapi-signature');
+        const secret = process.env.VAPI_WEBHOOK_SECRET;
 
-        console.log('Vapi search-book request:', JSON.stringify(body, null, 2));
+        if (secret) {
+            if (!signature) {
+                return new NextResponse(JSON.stringify({ error: 'Missing x-vapi-signature header' }), { status: 401 });
+            }
+
+            const hash = crypto
+                .createHmac('sha256', secret)
+                .update(rawBody)
+                .digest('hex');
+
+            if (signature !== `sha256=${hash}` && signature !== hash) {
+                return new NextResponse(JSON.stringify({ error: 'Invalid signature' }), { status: 401 });
+            }
+        }
+
+        const body = JSON.parse(rawBody);
 
         // Support multiple Vapi formats
         const functionCall = body?.message?.functionCall;

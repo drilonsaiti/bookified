@@ -9,7 +9,7 @@ import {cn} from "@/lib/utils";
 const VapiControls = ({book}: { book: IBook }) => {
     const {
         status, isActive, messages, currentMessage, currentUserMessage, duration,
-        start, stop, clearErrors
+        start, stop,
     } = useVapi(book);
 
     return (
@@ -28,6 +28,8 @@ const VapiControls = ({book}: { book: IBook }) => {
                         <button
                             onClick={isActive ? stop : start}
                             disabled={status === 'connecting'}
+                            aria-label={isActive ? 'Stop voice assistant' : 'Start voice assistant'}
+                            title={isActive ? 'Stop voice assistant' : 'Start voice assistant'}
                             className={cn(
                                 "vapi-mic-btn shadow-md w-[60px]! h-[60px]!",
                                 isActive ? "vapi-mic-btn-active" : "vapi-mic-btn-inactive"
