@@ -148,9 +148,9 @@ export interface StartSessionResult {
     isBillingError?: boolean;
 }
 
-export interface CreateBookResult {
+export interface CreateBookResult<T = unknown> {
     success: boolean;
-    data?: any;
+    data?: T;
     error?: string;
     isBillingError?: boolean;
     alreadyExists?: boolean;

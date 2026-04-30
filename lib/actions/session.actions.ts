@@ -9,7 +9,7 @@ import {auth} from "@clerk/nextjs/server";
 
 
 
-export const startVoiceSession = async (clerkId:string, bookId: string): Promise<StartSessionResult> => {
+export const startVoiceSession = async (bookId: string): Promise<StartSessionResult> => {
     try {
         const { userId } = await auth();
         if (!userId) {
@@ -38,7 +38,7 @@ export const startVoiceSession = async (clerkId:string, bookId: string): Promise
         }
 
         const session = await VoiceSession.create({
-            clerkId,
+            clerkId: userId,
             bookId,
             startedAt: new Date(),
             billingPeriodStart: periodStart,
