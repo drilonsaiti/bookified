@@ -115,8 +115,16 @@ const UploadForm = () => {
             })
 
             if (!book.success) {
-                toast.error('Failed to upload book. Please try again.');
-                throw new Error('Failed to create book');
+                if (book.isBillingError) {
+                    toast.info(book.error, {
+                        description: 'Redirecting to subscriptions...',
+                    });
+                    router.push('/subscriptions');
+                    return;
+                }
+
+                toast.error(book.error || 'Failed to create book');
+                return;
             }
 
             if (book.alreadyExists) {
@@ -130,8 +138,8 @@ const UploadForm = () => {
             const segments = await saveBookSegments(book.data._id,parsedPDF.content);
 
             if (!segments.success) {
-                toast.error('Failed to save book segments. Please try again.');
-                throw new Error('Failed to save book segments');
+                toast.error(segments.error || 'Failed to save book segments');
+                return;
             }
 
             form.reset();
@@ -139,8 +147,7 @@ const UploadForm = () => {
 
         } catch (error) {
             console.error(error);
-
-            toast.error('Failed to upload book. Please try again.');
+            toast.error('An unexpected error occurred. Please try again.');
         } finally {
             setIsSubmitting(false);
         }

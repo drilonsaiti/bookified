@@ -129,6 +129,8 @@ export interface FileUploadFieldProps<T extends FieldValues> {
     hint: string;
 }
 
+export type PlanType = 'free' | 'standard' | 'pro';
+
 export interface SessionCheckResult {
     allowed: boolean;
     currentCount: number;
@@ -144,6 +146,14 @@ export interface StartSessionResult {
     maxDurationMinutes?: number;
     error?: string;
     isBillingError?: boolean;
+}
+
+export interface CreateBookResult {
+    success: boolean;
+    data?: any;
+    error?: string;
+    isBillingError?: boolean;
+    alreadyExists?: boolean;
 }
 
 export interface EndSessionResult {
