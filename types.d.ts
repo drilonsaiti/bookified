@@ -82,8 +82,20 @@ export interface BookCardProps {
 }
 
 export interface Messages {
-    role: string;
+    role: 'user' | 'assistant' | 'system';
     content: string;
+}
+
+export interface VapiTranscriptMessage {
+    type: 'transcript';
+    role: 'user' | 'assistant';
+    transcriptType: 'partial' | 'final';
+    transcript: string;
+}
+
+export interface VapiMessage {
+    type: 'transcript' | 'status-update' | 'call-start' | 'call-end' | 'speech-start' | 'speech-end';
+    [key: string]: any;
 }
 
 export interface ShadowBoxProps {
@@ -115,4 +127,26 @@ export interface FileUploadFieldProps<T extends FieldValues> {
     icon: LucideIcon;
     placeholder: string;
     hint: string;
+}
+
+export interface SessionCheckResult {
+    allowed: boolean;
+    currentCount: number;
+    limit: number;
+    plan: PlanType;
+    maxDurationMinutes: number;
+    error?: string;
+}
+
+export interface StartSessionResult {
+    success: boolean;
+    sessionId?: string;
+    maxDurationMinutes?: number;
+    error?: string;
+    isBillingError?: boolean;
+}
+
+export interface EndSessionResult {
+    success: boolean;
+    error?: string;
 }

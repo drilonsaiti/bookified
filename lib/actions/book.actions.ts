@@ -198,3 +198,33 @@ export const saveBookSegments = async (bookId: string, segments: TextSegment[]) 
         }
     }
 }
+
+export const searchBookSegments = async (bookId: string, query: string, limit: number = 3) => {
+    try {
+        await connectToDatabase();
+
+        const segments = await BookSegment.find(
+            {
+                bookId,
+                $text: { $search: query }
+            },
+            {
+                score: { $meta: "textScore" }
+            }
+        )
+        .sort({ score: { $meta: "textScore" } })
+        .limit(limit)
+        .lean();
+
+        return {
+            success: true,
+            segments: serializeData(segments)
+        };
+    } catch (error: any) {
+        console.error('Error searching book segments:', error);
+        return {
+            success: false,
+            error: error?.message || String(error)
+        };
+    }
+}
