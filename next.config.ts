@@ -11,7 +11,7 @@ const nextConfig: NextConfig = {
             },
             {
                 protocol: 'https',
-                hostname: process.env.NEXT_PUBLIC_BLOB_BASE_URL || ''
+                hostname: '6gcryt1tbzxyjqvk.public.blob.vercel-storage.com'
             }
         ]
     }

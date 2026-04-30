@@ -2,10 +2,11 @@
 
 import {CreateBook, TextSegment} from "@/types";
 import {connectToDatabase} from "@/database/mongoose";
-import {generateSlug, serializeData} from "@/lib/utils";
+import {escapeRegex, generateSlug, serializeData} from "@/lib/utils";
 import Book from "@/database/models/book.model";
 import BookSegment from "@/database/models/book-segment.model";
 import {auth} from "@clerk/nextjs/server";
+import mongoose from "mongoose";
 
 export const getAllBooks = async () => {
     try {
@@ -196,5 +197,54 @@ export const saveBookSegments = async (bookId: string, segments: TextSegment[]) 
             success: false,
             error: error?.message || String(error)
         }
+    }
+}
+
+export const searchBookSegments = async (bookId: string, query: string, limit: number = 5) => {
+    try {
+        await connectToDatabase();
+        const bookObjectId = new mongoose.Types.ObjectId(bookId);
+
+        let segments:Record<string,unknown>[] = [];
+         try {
+            segments =  await BookSegment.find(
+                 {
+                     bookObjectId,
+                     $text: { $search: query }
+                 },
+             )
+                .select('_id bookId content segmentIndex pageNumber wordCount')
+                 .sort({ score: { $meta: "textScore" } })
+                 .limit(limit)
+                 .lean();
+         } catch {
+             segments = [];
+         }
+
+         if (segments.length === 0){
+             const keywords = query.split(/\s+/).filter((k) => k.length > 2);
+             const pattern = keywords.map(escapeRegex).join('|');
+
+             segments = await BookSegment.find({
+                 bookId: bookObjectId,
+                 content: {$regex: pattern,$options: 'i'}
+             })
+                 .select('_id bookId content segmentIndex pageNumber wordCount')
+                 .sort({segmentIndex: 1})
+                 .limit(limit)
+                 .lean();
+         }
+
+        return {
+            success: true,
+            segments: serializeData(segments)
+        };
+    } catch (error: any) {
+        console.error('Error searching book segments:', error);
+        return {
+            success: false,
+            error: error?.message || String(error),
+            segments: []
+        };
     }
 }
